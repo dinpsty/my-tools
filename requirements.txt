@@ -1,4 +1,4 @@
 streamlit
 reportlab
 openpyxl
-pythonpython-docx
+python-docx
