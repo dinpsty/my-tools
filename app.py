@@ -15,7 +15,9 @@ pilihan = st.selectbox(
     "Pilih Tools",
     [
         "Folder Maker",
-        "PDF Maker"
+        "PDF Maker" ,
+        "Excel Maker" ,
+        "Word Maker"
     ]
 )
 
@@ -166,5 +168,162 @@ elif pilihan == "PDF Maker":
                 label="⬇️ Download PDF",
                 data=zip_buffer.getvalue(),
                 file_name="pdf_hasil.zip",
+                mime="application/zip"
+            )
+
+elif pilihan == "Excel Maker":
+
+    from openpyxl import Workbook
+
+    st.subheader("📊 Excel Maker")
+
+    st.write("Masukkan nama Excel satu per baris.")
+
+    input_nama = st.text_area(
+        "Nama Excel",
+        height=250,
+        placeholder="Contoh:\nLaporan Januari\nLaporan Februari\nLaporan Maret"
+    )
+
+    if st.button("Buat Excel"):
+
+        daftar_nama = input_nama.splitlines()
+
+        nama_bersih = []
+        nama_sudah_ada = set()
+
+        for nama in daftar_nama:
+
+            nama = nama.strip()
+
+            if not nama:
+                continue
+
+            if nama.lower().endswith(".xlsx"):
+                nama = nama[:-5]
+
+            nama = re.sub(karakter_terlarang, "", nama).strip()
+
+            if not nama:
+                continue
+
+            if nama.lower() in nama_sudah_ada:
+                continue
+
+            nama_sudah_ada.add(nama.lower())
+            nama_bersih.append(nama)
+
+        if len(nama_bersih) == 0:
+
+            st.error("Masukkan minimal satu nama Excel.")
+
+        else:
+
+            zip_buffer = io.BytesIO()
+
+            with zipfile.ZipFile(
+                zip_buffer,
+                "w",
+                zipfile.ZIP_DEFLATED
+            ) as zip_file:
+
+                for nama in nama_bersih:
+
+                    excel_buffer = io.BytesIO()
+
+                    workbook = Workbook()
+                    workbook.save(excel_buffer)
+
+                    zip_file.writestr(
+                        f"{nama}.xlsx",
+                        excel_buffer.getvalue()
+                    )
+
+            st.success(
+                f"{len(nama_bersih)} file Excel berhasil dibuat."
+            )
+
+            st.download_button(
+                label="⬇️ Download Excel",
+                data=zip_buffer.getvalue(),
+                file_name="excel_hasil.zip",
+                mime="application/zip"
+            )
+elif pilihan == "Word Maker":
+
+    from docx import Document
+
+    st.subheader("📝 Word Maker")
+
+    st.write("Masukkan nama Word satu per baris.")
+
+    input_nama = st.text_area(
+        "Nama Word",
+        height=250,
+        placeholder="Contoh:\nLaporan Januari\nLaporan Februari\nLaporan Maret"
+    )
+
+    if st.button("Buat Word"):
+
+        daftar_nama = input_nama.splitlines()
+
+        nama_bersih = []
+        nama_sudah_ada = set()
+
+        for nama in daftar_nama:
+
+            nama = nama.strip()
+
+            if not nama:
+                continue
+
+            if nama.lower().endswith(".docx"):
+                nama = nama[:-5]
+
+            nama = re.sub(karakter_terlarang, "", nama).strip()
+
+            if not nama:
+                continue
+
+            if nama.lower() in nama_sudah_ada:
+                continue
+
+            nama_sudah_ada.add(nama.lower())
+            nama_bersih.append(nama)
+
+        if len(nama_bersih) == 0:
+
+            st.error("Masukkan minimal satu nama Word.")
+
+        else:
+
+            zip_buffer = io.BytesIO()
+
+            with zipfile.ZipFile(
+                zip_buffer,
+                "w",
+                zipfile.ZIP_DEFLATED
+            ) as zip_file:
+
+                for nama in nama_bersih:
+
+                    word_buffer = io.BytesIO()
+
+                    document = Document()
+                    document.save(word_buffer)
+
+                    zip_file.writestr(
+                        f"{nama}.docx",
+                        word_buffer.getvalue()
+                    )
+
+            st.success(
+                f"{len(nama_bersih)} file Word berhasil dibuat."
+            )
+
+            st.download_button(
+                label="⬇️ Download Word",
+                data=zip_buffer.getvalue(),
+                file_name="word_hasil.zip",
                 mime="application/zip"
             )
