@@ -1,473 +1,721 @@
-import streamlit as st
 import io
-import zipfile
-import re
+
 import os
-import tempfile
+
+import re
+
+import shutil
+
 import subprocess
-from openpyxl import load_workbook
+
+import tempfile
+
+import zipfile
+
+from pathlib import Path
+
+import streamlit as st
+
+from docx import Document
+
+from openpyxl import Workbook, load_workbook
+
+from pypdf import PdfReader, PdfWriter
+
+from reportlab.pdfgen import canvas
 
 st.set_page_config(
+
     page_title="My Tools",
+
     page_icon="🛠️",
+
     layout="centered"
+
 )
 
 st.title("🛠️ MY TOOLS")
 
 pilihan = st.selectbox(
+
     "Pilih Tools",
+
     [
-        "Folder Maker",
-        "PDF Maker" ,
-        "Excel Maker" ,
-        "Word Maker" , 
-        "Excel Sheet to PDF"
+
+        "PDF Blank",
+
+        "DOC Blank",
+
+        "XCL Blank",
+
+        "XCL Sheet to PDF",
+
+        "DOC Page to PDF",
+
+        "XCL Sheet to PDF (All Sheets)",
+
+        "DOC Page to PDF (All Pages)"
+
     ]
+
 )
 
 karakter_terlarang = r'[<>:"/\\|?*]'
 
-if pilihan == "Folder Maker":
+def bersihkan_nama(nama):
 
-    st.subheader("📁 Folder Maker")
+    nama = re.sub(karakter_terlarang, "", nama)
 
-    st.write(
-        "Masukkan nama folder satu per baris."
+    return nama.strip().rstrip(". ")
+
+def daftar_nama_bersih(teks, ekstensi):
+
+    hasil = []
+
+    sudah_ada = set()
+
+    for nama in teks.splitlines():
+
+        nama = nama.strip()
+
+        if nama.lower().endswith(ekstensi):
+
+            nama = nama[:-len(ekstensi)]
+
+        nama = bersihkan_nama(nama)
+
+        if nama.lower().endswith(" (blank)"):
+
+            nama = nama[:-8].strip()
+
+        if nama and nama.lower() not in sudah_ada:
+
+            sudah_ada.add(nama.lower())
+
+            hasil.append(nama)
+
+    return hasil
+
+def buat_zip(daftar_file):
+
+    buffer = io.BytesIO()
+
+    with zipfile.ZipFile(
+
+        buffer, "w", zipfile.ZIP_DEFLATED
+
+    ) as zip_file:
+
+        for nama, data in daftar_file:
+
+            zip_file.writestr(nama, data)
+
+    return buffer.getvalue()
+
+def nama_unik(nama, digunakan):
+
+    nama_awal = nama
+
+    nomor = 2
+
+    while nama.lower() in digunakan:
+
+        nama = f"{nama_awal} ({nomor})"
+
+        nomor += 1
+
+    digunakan.add(nama.lower())
+
+    return nama
+
+def cari_libreoffice():
+
+    lokasi = (
+
+        shutil.which("libreoffice")
+
+        or shutil.which("soffice")
+
     )
 
-    input_nama = st.text_area(
-        "Nama Folder",
-        height=250,
-        placeholder="Contoh:\nAndi\nBudi\nCitra"
+    if lokasi:
+
+        return lokasi
+
+    lokasi_windows = (
+
+        r"C:\Program Files\LibreOffice\program\soffice.exe"
+
     )
 
-    if st.button("Buat Folder"):
+    if os.path.exists(lokasi_windows):
 
-        daftar_nama = input_nama.splitlines()
+        return lokasi_windows
 
-        nama_bersih = []
-        nama_sudah_ada = set()
+    raise RuntimeError(
 
-        for nama in daftar_nama:
+        "LibreOffice belum tersedia di server."
 
-            nama = nama.strip()
-
-            if not nama:
-                continue
-
-            nama = re.sub(karakter_terlarang, "", nama).strip()
-
-            if not nama:
-                continue
-
-            if nama.lower() in nama_sudah_ada:
-                continue
-
-            nama_sudah_ada.add(nama.lower())
-            nama_bersih.append(nama)
-
-        if len(nama_bersih) == 0:
-
-            st.error("Masukkan minimal satu nama folder.")
-
-        else:
-
-            zip_buffer = io.BytesIO()
-
-            with zipfile.ZipFile(
-                zip_buffer,
-                "w",
-                zipfile.ZIP_DEFLATED
-            ) as zip_file:
-
-                for nama in nama_bersih:
-                    zip_file.writestr(f"{nama}/", "")
-
-            st.success(
-                f"{len(nama_bersih)} folder berhasil dibuat."
-            )
-
-            st.download_button(
-                label="⬇️ Download Folder",
-                data=zip_buffer.getvalue(),
-                file_name="folder_hasil.zip",
-                mime="application/zip"
-            )
-
-
-elif pilihan == "PDF Maker":
-
-    from reportlab.pdfgen import canvas
-
-    st.subheader("📄 PDF Maker")
-
-    st.write("Masukkan nama PDF satu per baris.")
-
-    input_nama = st.text_area(
-        "Nama PDF",
-        height=250,
-        placeholder="Contoh:\nAndi\nBudi\nCitra"
     )
 
-    if st.button("Buat PDF"):
+def konversi_ke_pdf(data, ekstensi):
 
-        daftar_nama = input_nama.splitlines()
+    with tempfile.TemporaryDirectory() as folder:
 
-        nama_bersih = []
-        nama_sudah_ada = set()
+        path_input = Path(folder) / f"input{ekstensi}"
 
-        for nama in daftar_nama:
+        path_output = Path(folder) / "hasil"
 
-            nama = nama.strip()
+        path_profile = Path(folder) / "profile"
 
-            if not nama:
-                continue
+        path_output.mkdir()
 
-            if nama.lower().endswith(".pdf"):
-                nama = nama[:-4]
+        path_input.write_bytes(data)
 
-            nama = re.sub(karakter_terlarang, "", nama).strip()
+        perintah = [
 
-            if not nama:
-                continue
+            cari_libreoffice(),
 
-            if nama.lower() in nama_sudah_ada:
-                continue
+            f"-env:UserInstallation={path_profile.as_uri()}",
 
-            nama_sudah_ada.add(nama.lower())
-            nama_bersih.append(nama)
+            "--headless",
 
-        if len(nama_bersih) == 0:
+            "--convert-to",
 
-            st.error("Masukkan minimal satu nama PDF.")
+            "pdf",
 
-        else:
+            "--outdir",
 
-            zip_buffer = io.BytesIO()
+            str(path_output),
 
-            with zipfile.ZipFile(
-                zip_buffer,
-                "w",
-                zipfile.ZIP_DEFLATED
-            ) as zip_file:
+            str(path_input)
 
-                for nama in nama_bersih:
+        ]
 
-                    pdf_buffer = io.BytesIO()
+        proses = subprocess.run(
 
-                    pdf = canvas.Canvas(pdf_buffer)
-                    pdf.showPage()
-                    pdf.save()
+            perintah,
 
-                    zip_file.writestr(
-                        f"{nama}.pdf",
-                        pdf_buffer.getvalue()
-                    )
+            capture_output=True,
 
-            st.success(
-                f"{len(nama_bersih)} PDF berhasil dibuat."
+            text=True,
+
+            timeout=180
+
+        )
+
+        path_pdf = path_output / "input.pdf"
+
+        if proses.returncode != 0 or not path_pdf.exists():
+
+            raise RuntimeError(
+
+                proses.stderr
+
+                or proses.stdout
+
+                or "Gagal mengonversi file."
+
             )
 
-            st.download_button(
-                label="⬇️ Download PDF",
-                data=zip_buffer.getvalue(),
-                file_name="pdf_hasil.zip",
-                mime="application/zip"
-            )
+        return path_pdf.read_bytes()
 
-elif pilihan == "Excel Maker":
+def konversi_sheet(data_excel, nama_sheet):
 
-    from openpyxl import Workbook
+    workbook = load_workbook(io.BytesIO(data_excel))
 
-    st.subheader("📊 Excel Maker")
+    try:
 
-    st.write("Masukkan nama Excel satu per baris.")
+        for sheet in list(workbook.sheetnames):
 
-    input_nama = st.text_area(
-        "Nama Excel",
-        height=250,
-        placeholder="Contoh:\nLaporan Januari\nLaporan Februari\nLaporan Maret"
+            if sheet != nama_sheet:
+
+                del workbook[sheet]
+
+        excel_buffer = io.BytesIO()
+
+        workbook.save(excel_buffer)
+
+    finally:
+
+        workbook.close()
+
+    return konversi_ke_pdf(
+
+        excel_buffer.getvalue(),
+
+        ".xlsx"
+
     )
 
-    if st.button("Buat Excel"):
+def pdf_satu_halaman(pdf_bytes, nomor_halaman):
 
-        daftar_nama = input_nama.splitlines()
+    reader = PdfReader(io.BytesIO(pdf_bytes))
 
-        nama_bersih = []
-        nama_sudah_ada = set()
+    writer = PdfWriter()
 
-        for nama in daftar_nama:
+    writer.add_page(reader.pages[nomor_halaman - 1])
 
-            nama = nama.strip()
+    buffer = io.BytesIO()
 
-            if not nama:
-                continue
+    writer.write(buffer)
 
-            if nama.lower().endswith(".xlsx"):
-                nama = nama[:-5]
+    return buffer.getvalue()
 
-            nama = re.sub(karakter_terlarang, "", nama).strip()
+@st.cache_data(show_spinner=False)
 
-            if not nama:
-                continue
+def konversi_word_cached(data):
 
-            if nama.lower() in nama_sudah_ada:
-                continue
+    return konversi_ke_pdf(data, ".docx")
 
-            nama_sudah_ada.add(nama.lower())
-            nama_bersih.append(nama)
+def proses_excel(file_excel, semua_sheet=False):
 
-        if len(nama_bersih) == 0:
+    data_excel = file_excel.getvalue()
 
-            st.error("Masukkan minimal satu nama Excel.")
-
-        else:
-
-            zip_buffer = io.BytesIO()
-
-            with zipfile.ZipFile(
-                zip_buffer,
-                "w",
-                zipfile.ZIP_DEFLATED
-            ) as zip_file:
-
-                for nama in nama_bersih:
-
-                    excel_buffer = io.BytesIO()
-
-                    workbook = Workbook()
-                    workbook.save(excel_buffer)
-
-                    zip_file.writestr(
-                        f"{nama}.xlsx",
-                        excel_buffer.getvalue()
-                    )
-
-            st.success(
-                f"{len(nama_bersih)} file Excel berhasil dibuat."
-            )
-
-            st.download_button(
-                label="⬇️ Download Excel",
-                data=zip_buffer.getvalue(),
-                file_name="excel_hasil.zip",
-                mime="application/zip"
-            )
-elif pilihan == "Word Maker":
-
-    from docx import Document
-
-    st.subheader("📝 Word Maker")
-
-    st.write("Masukkan nama Word satu per baris.")
-
-    input_nama = st.text_area(
-        "Nama Word",
-        height=250,
-        placeholder="Contoh:\nLaporan Januari\nLaporan Februari\nLaporan Maret"
-    )
-
-    if st.button("Buat Word"):
-
-        daftar_nama = input_nama.splitlines()
-
-        nama_bersih = []
-        nama_sudah_ada = set()
-
-        for nama in daftar_nama:
-
-            nama = nama.strip()
-
-            if not nama:
-                continue
-
-            if nama.lower().endswith(".docx"):
-                nama = nama[:-5]
-
-            nama = re.sub(karakter_terlarang, "", nama).strip()
-
-            if not nama:
-                continue
-
-            if nama.lower() in nama_sudah_ada:
-                continue
-
-            nama_sudah_ada.add(nama.lower())
-            nama_bersih.append(nama)
-
-        if len(nama_bersih) == 0:
-
-            st.error("Masukkan minimal satu nama Word.")
-
-        else:
-
-            zip_buffer = io.BytesIO()
-
-            with zipfile.ZipFile(
-                zip_buffer,
-                "w",
-                zipfile.ZIP_DEFLATED
-            ) as zip_file:
-
-                for nama in nama_bersih:
-
-                    word_buffer = io.BytesIO()
-
-                    document = Document()
-                    document.save(word_buffer)
-
-                    zip_file.writestr(
-                        f"{nama}.docx",
-                        word_buffer.getvalue()
-                    )
-
-            st.success(
-                f"{len(nama_bersih)} file Word berhasil dibuat."
-            )
-
-            st.download_button(
-                label="⬇️ Download Word",
-                data=zip_buffer.getvalue(),
-                file_name="word_hasil.zip",
-                mime="application/zip"
-            )
-
-
-elif pilihan == "Excel Sheet to PDF":
-
-    st.subheader("📊 Excel Sheet to PDF")
-
-    st.write("Upload file Excel dan pilih sheet yang ingin dijadikan PDF.")
-
-    file_excel = st.file_uploader(
-        "Pilih File Excel",
-        type=["xlsx"]
-    )
-
-    if file_excel is not None:
-
-        data_excel = file_excel.getvalue()
+    try:
 
         workbook = load_workbook(
+
             io.BytesIO(data_excel),
+
             read_only=True
+
         )
 
         daftar_sheet = workbook.sheetnames
+
         workbook.close()
 
+    except Exception as e:
+
+        st.error(f"Gagal membaca Excel: {e}")
+
+        return
+
+    st.write(f"Jumlah sheet: {len(daftar_sheet)}")
+
+    if semua_sheet:
+
+        sheet_terpilih = daftar_sheet
+
+        st.write("Semua sheet akan dikonversi.")
+
+        st.write(", ".join(daftar_sheet))
+
+    else:
+
         sheet_terpilih = st.multiselect(
+
             "Pilih Sheet",
+
             daftar_sheet
+
         )
 
-        if st.button("Convert ke PDF"):
+    if st.button("Convert ke PDF"):
 
-            if not sheet_terpilih:
-                st.warning("Pilih minimal satu sheet.")
+        if not sheet_terpilih:
+
+            st.warning("Pilih minimal satu sheet.")
+
+            return
+
+        hasil_file = []
+
+        gagal = []
+
+        digunakan = set()
+
+        progress = st.progress(0)
+
+        for index, nama_sheet in enumerate(sheet_terpilih):
+
+            try:
+
+                pdf_bytes = konversi_sheet(
+
+                    data_excel, nama_sheet
+
+                )
+
+                nama = bersihkan_nama(nama_sheet)
+
+                nama = nama_unik(nama or "Sheet", digunakan)
+
+                hasil_file.append(
+
+                    (f"{nama}.pdf", pdf_bytes)
+
+                )
+
+            except Exception as e:
+
+                gagal.append(f"{nama_sheet}: {e}")
+
+            progress.progress(
+
+                (index + 1) / len(sheet_terpilih)
+
+            )
+
+        if hasil_file:
+
+            st.success(
+
+                f"{len(hasil_file)} sheet berhasil dikonversi."
+
+            )
+
+            if len(hasil_file) == 1:
+
+                nama, data = hasil_file[0]
+
+                st.download_button(
+
+                    "⬇️ Download PDF",
+
+                    data=data,
+
+                    file_name=nama,
+
+                    mime="application/pdf"
+
+                )
 
             else:
-                with tempfile.TemporaryDirectory() as folder:
 
-                    file_input = os.path.join(folder, "input.xlsx")
+                st.download_button(
 
-                    with open(file_input, "wb") as f:
-                        f.write(data_excel)
+                    "⬇️ Download ZIP",
 
-                    folder_pdf = os.path.join(folder, "hasil")
-                    os.makedirs(folder_pdf)
+                    data=buat_zip(hasil_file),
 
-                    zip_buffer = io.BytesIO()
-                    berhasil = []
-                    gagal = []
+                    file_name="excel_sheet_pdf.zip",
 
-                    with zipfile.ZipFile(
-                        zip_buffer,
-                        "w",
-                        zipfile.ZIP_DEFLATED
-                    ) as zip_file:
+                    mime="application/zip"
 
-                        for nomor, nama_sheet in enumerate(
-                            sheet_terpilih, start=1
-                        ):
+                )
 
-                            try:
-                                wb = load_workbook(
-                                    io.BytesIO(data_excel)
-                                )
+        if gagal:
 
-                                for sheet in list(wb.sheetnames):
-                                    if sheet != nama_sheet:
-                                        del wb[sheet]
+            st.error("Beberapa sheet gagal dikonversi.")
 
-                                nama_aman = re.sub(
-                                    karakter_terlarang,
-                                    "",
-                                    nama_sheet
-                                ).strip() or f"Sheet_{nomor}"
+            for pesan in gagal:
 
-                                nama_input = f"sheet_{nomor}.xlsx"
+                st.write(pesan)
 
-                                path_input = os.path.join(
-                                    folder,
-                                    nama_input
-                                )
+def proses_word(file_word, semua_halaman=False):
 
-                                wb.save(path_input)
-                                wb.close()
+    data_word = file_word.getvalue()
 
-                                hasil = subprocess.run(
-                                    [
-                                        "libreoffice",
-                                        "-env:UserInstallation=file://" + folder.replace("\\", "/") + f"/lo_{nomor}",
-                                        "--headless",
-                                        "--convert-to",
-                                        "pdf",
-                                        "--outdir",
-                                        folder_pdf,
-                                        path_input
-                                    ],
-                                    capture_output=True,
-                                    text=True,
-                                    timeout=120
-                                )
+    try:
 
-                                path_pdf = os.path.join(
-                                    folder_pdf,
-                                    f"sheet_{nomor}.pdf"
-                                )
+        with st.spinner("Membaca halaman Word..."):
 
-                                if hasil.returncode != 0 or not os.path.exists(path_pdf):
-                                    raise RuntimeError(
-                                        hasil.stderr or hasil.stdout or "Konversi gagal."
-                                    )
+            pdf_bytes = konversi_word_cached(data_word)
 
-                                with open(path_pdf, "rb") as f:
-                                    zip_file.writestr(
-                                        f"{nama_aman}.pdf",
-                                        f.read()
-                                    )
+        reader = PdfReader(io.BytesIO(pdf_bytes))
 
-                                berhasil.append(nama_sheet)
+        jumlah_halaman = len(reader.pages)
 
-                            except Exception as e:
-                                gagal.append(f"{nama_sheet}: {e}")
+    except Exception as e:
 
-                    if berhasil:
+        st.error(f"Gagal membaca dokumen: {e}")
 
-                        st.success(
-                            f"{len(berhasil)} sheet berhasil dikonversi."
-                        )
+        return
 
-                        st.download_button(
-                            "⬇️ Download PDF",
-                            data=zip_buffer.getvalue(),
-                            file_name="excel_sheet_pdf.zip",
-                            mime="application/zip"
-                        )
+    st.write(f"Jumlah halaman: {jumlah_halaman}")
 
-                    if gagal:
-                        st.error("Beberapa sheet gagal dikonversi.")
-                        for pesan in gagal:
-                            st.write(pesan)
+    if semua_halaman:
+
+        halaman_terpilih = list(
+
+            range(1, jumlah_halaman + 1)
+
+        )
+
+        st.write("Semua halaman akan dikonversi.")
+
+    else:
+
+        halaman_terpilih = st.multiselect(
+
+            "Pilih Halaman",
+
+            list(range(1, jumlah_halaman + 1)),
+
+            format_func=lambda x: f"Halaman {x}"
+
+        )
+
+    if st.button("Convert ke PDF"):
+
+        if not halaman_terpilih:
+
+            st.warning("Pilih minimal satu halaman.")
+
+            return
+
+        nama_dokumen = bersihkan_nama(
+
+            Path(file_word.name).stem
+
+        ) or "Dokumen"
+
+        hasil_file = []
+
+        for nomor in sorted(halaman_terpilih):
+
+            data_halaman = pdf_satu_halaman(
+
+                pdf_bytes, nomor
+
+            )
+
+            nama_pdf = (
+
+                f"{nama_dokumen} - Page {nomor:03d}.pdf"
+
+            )
+
+            hasil_file.append(
+
+                (nama_pdf, data_halaman)
+
+            )
+
+        st.success(
+
+            f"{len(hasil_file)} halaman berhasil dibuat."
+
+        )
+
+        if len(hasil_file) == 1:
+
+            nama, data = hasil_file[0]
+
+            st.download_button(
+
+                "⬇️ Download PDF",
+
+                data=data,
+
+                file_name=nama,
+
+                mime="application/pdf"
+
+            )
+
+        else:
+
+            st.download_button(
+
+                "⬇️ Download ZIP",
+
+                data=buat_zip(hasil_file),
+
+                file_name="word_pages_pdf.zip",
+
+                mime="application/zip"
+
+            )
+
+if pilihan in [
+
+    "PDF Blank",
+
+    "DOC Blank",
+
+    "XCL Blank"
+
+]:
+
+    st.subheader(pilihan)
+
+    st.write("Masukkan nama file satu per baris.")
+
+    input_nama = st.text_area(
+
+        "Nama File",
+
+        height=250,
+
+        placeholder="Contoh:\nAndi\nBudi\nCitra"
+
+    )
+
+    if pilihan == "PDF Blank":
+
+        ekstensi = ".pdf"
+
+    elif pilihan == "DOC Blank":
+
+        ekstensi = ".docx"
+
+    else:
+
+        ekstensi = ".xlsx"
+
+    if st.button("Buat File"):
+
+        daftar_nama = daftar_nama_bersih(
+
+            input_nama, ekstensi
+
+        )
+
+        if not daftar_nama:
+
+            st.error("Masukkan minimal satu nama file.")
+
+        else:
+
+            daftar_file = []
+
+            for nama in daftar_nama:
+
+                buffer = io.BytesIO()
+
+                if pilihan == "PDF Blank":
+
+                    pdf = canvas.Canvas(buffer)
+
+                    pdf.showPage()
+
+                    pdf.save()
+
+                elif pilihan == "DOC Blank":
+
+                    document = Document()
+
+                    document.save(buffer)
+
+                else:
+
+                    workbook = Workbook()
+
+                    workbook.save(buffer)
+
+                    workbook.close()
+
+                nama_file = f"{nama} (BLANK){ekstensi}"
+
+                daftar_file.append(
+
+                    (nama_file, buffer.getvalue())
+
+                )
+
+            st.success(
+
+                f"{len(daftar_file)} file berhasil dibuat."
+
+            )
+
+            st.download_button(
+
+                "⬇️ Download File",
+
+                data=buat_zip(daftar_file),
+
+                file_name="blank_files.zip",
+
+                mime="application/zip"
+
+            )
+
+elif pilihan == "XCL Sheet to PDF":
+
+    st.subheader("📊 XCL Sheet to PDF")
+
+    st.write(
+
+        "Upload Excel dan pilih sheet yang ingin "
+
+        "dijadikan PDF."
+
+    )
+
+    file_excel = st.file_uploader(
+
+        "Upload Excel",
+
+        type=["xlsx"]
+
+    )
+
+    if file_excel:
+
+        proses_excel(file_excel)
+
+elif pilihan == "XCL Sheet to PDF (All Sheets)":
+
+    st.subheader("📊 XCL Sheet to PDF (All Sheets)")
+
+    st.write(
+
+        "Seluruh sheet Excel akan dikonversi "
+
+        "menjadi PDF terpisah."
+
+    )
+
+    file_excel = st.file_uploader(
+
+        "Upload Excel",
+
+        type=["xlsx"]
+
+    )
+
+    if file_excel:
+
+        proses_excel(file_excel, semua_sheet=True)
+
+elif pilihan == "DOC Page to PDF":
+
+    st.subheader("📝 DOC Page to PDF")
+
+    st.write(
+
+        "Upload Word dan pilih halaman yang "
+
+        "ingin dijadikan PDF."
+
+    )
+
+    file_word = st.file_uploader(
+
+        "Upload Word",
+
+        type=["docx"]
+
+    )
+
+    if file_word:
+
+        proses_word(file_word)
+
+elif pilihan == "DOC Page to PDF (All Pages)":
+
+    st.subheader("📝 DOC Page to PDF (All Pages)")
+
+    st.write(
+
+        "Seluruh halaman Word akan disimpan "
+
+        "sebagai PDF terpisah."
+
+    )
+
+    file_word = st.file_uploader(
+
+        "Upload Word",
+
+        type=["docx"]
+
+    )
+
+    if file_word:
+
+        proses_word(file_word, semua_halaman=True)
