@@ -2,6 +2,10 @@ import streamlit as st
 import io
 import zipfile
 import re
+import os
+import tempfile
+import subprocess
+from openpyxl import load_workbook
 
 st.set_page_config(
     page_title="My Tools",
@@ -17,7 +21,8 @@ pilihan = st.selectbox(
         "Folder Maker",
         "PDF Maker" ,
         "Excel Maker" ,
-        "Word Maker"
+        "Word Maker" , 
+        "Excel Sheet to PDF"
     ]
 )
 
@@ -327,3 +332,142 @@ elif pilihan == "Word Maker":
                 file_name="word_hasil.zip",
                 mime="application/zip"
             )
+
+
+elif pilihan == "Excel Sheet to PDF":
+
+    st.subheader("📊 Excel Sheet to PDF")
+
+    st.write("Upload file Excel dan pilih sheet yang ingin dijadikan PDF.")
+
+    file_excel = st.file_uploader(
+        "Pilih File Excel",
+        type=["xlsx"]
+    )
+
+    if file_excel is not None:
+
+        data_excel = file_excel.getvalue()
+
+        workbook = load_workbook(
+            io.BytesIO(data_excel),
+            read_only=True
+        )
+
+        daftar_sheet = workbook.sheetnames
+        workbook.close()
+
+        sheet_terpilih = st.multiselect(
+            "Pilih Sheet",
+            daftar_sheet
+        )
+
+        if st.button("Convert ke PDF"):
+
+            if not sheet_terpilih:
+                st.warning("Pilih minimal satu sheet.")
+
+            else:
+                with tempfile.TemporaryDirectory() as folder:
+
+                    file_input = os.path.join(folder, "input.xlsx")
+
+                    with open(file_input, "wb") as f:
+                        f.write(data_excel)
+
+                    folder_pdf = os.path.join(folder, "hasil")
+                    os.makedirs(folder_pdf)
+
+                    zip_buffer = io.BytesIO()
+                    berhasil = []
+                    gagal = []
+
+                    with zipfile.ZipFile(
+                        zip_buffer,
+                        "w",
+                        zipfile.ZIP_DEFLATED
+                    ) as zip_file:
+
+                        for nomor, nama_sheet in enumerate(
+                            sheet_terpilih, start=1
+                        ):
+
+                            try:
+                                wb = load_workbook(
+                                    io.BytesIO(data_excel)
+                                )
+
+                                for sheet in list(wb.sheetnames):
+                                    if sheet != nama_sheet:
+                                        del wb[sheet]
+
+                                nama_aman = re.sub(
+                                    karakter_terlarang,
+                                    "",
+                                    nama_sheet
+                                ).strip() or f"Sheet_{nomor}"
+
+                                nama_input = f"sheet_{nomor}.xlsx"
+
+                                path_input = os.path.join(
+                                    folder,
+                                    nama_input
+                                )
+
+                                wb.save(path_input)
+                                wb.close()
+
+                                hasil = subprocess.run(
+                                    [
+                                        "libreoffice",
+                                        "-env:UserInstallation=file://" + folder.replace("\\", "/") + f"/lo_{nomor}",
+                                        "--headless",
+                                        "--convert-to",
+                                        "pdf",
+                                        "--outdir",
+                                        folder_pdf,
+                                        path_input
+                                    ],
+                                    capture_output=True,
+                                    text=True,
+                                    timeout=120
+                                )
+
+                                path_pdf = os.path.join(
+                                    folder_pdf,
+                                    f"sheet_{nomor}.pdf"
+                                )
+
+                                if hasil.returncode != 0 or not os.path.exists(path_pdf):
+                                    raise RuntimeError(
+                                        hasil.stderr or hasil.stdout or "Konversi gagal."
+                                    )
+
+                                with open(path_pdf, "rb") as f:
+                                    zip_file.writestr(
+                                        f"{nama_aman}.pdf",
+                                        f.read()
+                                    )
+
+                                berhasil.append(nama_sheet)
+
+                            except Exception as e:
+                                gagal.append(f"{nama_sheet}: {e}")
+
+                    if berhasil:
+
+                        st.success(
+                            f"{len(berhasil)} sheet berhasil dikonversi."
+                        )
+
+                        st.download_button(
+                            "⬇️ Download PDF",
+                            data=zip_buffer.getvalue(),
+                            file_name="excel_sheet_pdf.zip",
+                            mime="application/zip"
+                        )
+
+                    if gagal:
+                        st.error("Beberapa sheet gagal dikonversi.")
+                        for pesan in gagal:
+                            st.write(pesan)
