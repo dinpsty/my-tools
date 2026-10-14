@@ -12,6 +12,8 @@ import tempfile
 
 import zipfile
 
+import posixpath
+
 from pathlib import Path
 
 import streamlit as st
@@ -222,81 +224,187 @@ def konversi_ke_pdf(data, ekstensi):
 
         return path_pdf.read_bytes()
 
-def siapkan_excel_sheet(data_excel, nama_sheet):
+def siapkan_excel_sheet(data_excel, nama_sheet, mode):
+    ns_main = (
+        "http://schemas.openxmlformats.org/"
+        "spreadsheetml/2006/main"
+    )
+    ns_rel = (
+        "http://schemas.openxmlformats.org/"
+        "officeDocument/2006/relationships"
+    )
+    ns_pkg = (
+        "http://schemas.openxmlformats.org/"
+        "package/2006/relationships"
+    )
+
     input_buffer = io.BytesIO(data_excel)
     output_buffer = io.BytesIO()
 
-    namespace = {
-        "main": (
-            "http://schemas.openxmlformats.org/"
-            "spreadsheetml/2006/main"
+    with zipfile.ZipFile(input_buffer, "r") as sumber:
+        workbook_xml = etree.fromstring(
+            sumber.read("xl/workbook.xml")
         )
-    }
 
-    with zipfile.ZipFile(input_buffer, "r") as zip_input:
-        with zipfile.ZipFile(
-            output_buffer, "w"
-        ) as zip_output:
+        relationships_xml = etree.fromstring(
+            sumber.read("xl/_rels/workbook.xml.rels")
+        )
 
-            if "xl/workbook.xml" not in zip_input.namelist():
-                raise ValueError("Struktur file Excel tidak valid.")
+        hubungan = {}
 
-            xml_workbook = zip_input.read(
-                "xl/workbook.xml"
-            )
+        for rel in relationships_xml.findall(
+            f"{{{ns_pkg}}}Relationship"
+        ):
+            target = rel.get("Target", "")
 
-            root = etree.fromstring(xml_workbook)
-
-            daftar_sheet = root.xpath(
-                ".//main:sheets/main:sheet",
-                namespaces=namespace
-            )
-
-            nama_ditemukan = False
-
-            for sheet in daftar_sheet:
-                nama = sheet.get("name")
-
-                if nama == nama_sheet:
-                    sheet.set("state", "visible")
-                    nama_ditemukan = True
-                else:
-                    sheet.set("state", "hidden")
-
-            if not nama_ditemukan:
-                raise ValueError(
-                    f"Sheet '{nama_sheet}' tidak ditemukan."
+            if target.startswith("/"):
+                path = target.lstrip("/")
+            else:
+                path = posixpath.normpath(
+                    posixpath.join("xl", target)
                 )
 
-            xml_baru = etree.tostring(
-                root,
-                encoding="UTF-8",
-                xml_declaration=True
+            hubungan[rel.get("Id")] = path
+
+        target_sheet = None
+        indeks_sheet = None
+
+        sheets = workbook_xml.findall(
+            f".//{{{ns_main}}}sheets/{{{ns_main}}}sheet"
+        )
+
+        for indeks, sheet in enumerate(sheets):
+            if sheet.get("name") == nama_sheet:
+                sheet.set("state", "visible")
+                indeks_sheet = indeks
+
+                rel_id = sheet.get(f"{{{ns_rel}}}id")
+                target_sheet = hubungan.get(rel_id)
+
+            else:
+                sheet.set("state", "hidden")
+
+        if target_sheet is None:
+            raise ValueError(
+                f"Sheet '{nama_sheet}' tidak ditemukan."
             )
 
-            for info in zip_input.infolist():
+        views = workbook_xml.find(
+            f"{{{ns_main}}}bookViews"
+        )
+
+        if views is not None and indeks_sheet is not None:
+            for view in views:
+                if view.tag == f"{{{ns_main}}}workbookView":
+                    view.set("activeTab", str(indeks_sheet))
+
+        with zipfile.ZipFile(
+            output_buffer, "w"
+        ) as hasil:
+
+            for info in sumber.infolist():
+                data = sumber.read(info.filename)
+
                 if info.filename == "xl/workbook.xml":
-                    zip_output.writestr(
-                        info,
-                        xml_baru
+                    data = etree.tostring(
+                        workbook_xml,
+                        encoding="UTF-8",
+                        xml_declaration=True
                     )
-                else:
-                    zip_output.writestr(
-                        info,
-                        zip_input.read(info.filename)
+
+                elif (
+                    info.filename == target_sheet
+                    and mode == "Fit to Width"
+                ):
+                    root = etree.fromstring(data)
+
+                    sheet_pr = root.find(
+                        f"{{{ns_main}}}sheetPr"
                     )
+
+                    if sheet_pr is None:
+                        sheet_pr = etree.Element(
+                            f"{{{ns_main}}}sheetPr"
+                        )
+                        root.insert(0, sheet_pr)
+
+                    setup_pr = sheet_pr.find(
+                        f"{{{ns_main}}}pageSetUpPr"
+                    )
+
+                    if setup_pr is None:
+                        setup_pr = etree.SubElement(
+                            sheet_pr,
+                            f"{{{ns_main}}}pageSetUpPr"
+                        )
+
+                    setup_pr.set("fitToPage", "1")
+
+                    page_setup = root.find(
+                        f"{{{ns_main}}}pageSetup"
+                    )
+
+                    if page_setup is None:
+                        page_setup = etree.Element(
+                            f"{{{ns_main}}}pageSetup"
+                        )
+
+                        posisi = len(root)
+
+                        for i, element in enumerate(root):
+                            tag = etree.QName(
+                                element
+                            ).localname
+
+                            if tag in [
+                                "headerFooter",
+                                "rowBreaks",
+                                "colBreaks",
+                                "customProperties",
+                                "cellWatches",
+                                "ignoredErrors",
+                                "smartTags",
+                                "drawing",
+                                "legacyDrawing",
+                                "legacyDrawingHF",
+                                "picture",
+                                "oleObjects",
+                                "controls",
+                                "webPublishItems",
+                                "tableParts",
+                                "extLst"
+                            ]:
+                                posisi = i
+                                break
+
+                        root.insert(posisi, page_setup)
+
+                    page_setup.set("fitToWidth", "1")
+                    page_setup.set("fitToHeight", "0")
+
+                    if "scale" in page_setup.attrib:
+                        del page_setup.attrib["scale"]
+
+                    data = etree.tostring(
+                        root,
+                        encoding="UTF-8",
+                        xml_declaration=True
+                    )
+
+                hasil.writestr(info, data)
 
     return output_buffer.getvalue()
 
 
-def konversi_sheet(data_excel, nama_sheet):
-    excel_bytes = siapkan_excel_sheet(
+def konversi_sheet(data_excel, nama_sheet, mode):
+    data_sheet = siapkan_excel_sheet(
         data_excel,
-        nama_sheet
+        nama_sheet,
+        mode
     )
 
     return konversi_ke_pdf(
-        excel_bytes,
+        data_sheet,
         ".xlsx"
     )
 
@@ -386,7 +494,9 @@ def proses_excel(file_excel, semua_sheet=False):
 
                 pdf_bytes = konversi_sheet(
 
-                    data_excel, nama_sheet
+                    data_excel, 
+                    nama_sheet,\
+                    mode
 
                 )
 
