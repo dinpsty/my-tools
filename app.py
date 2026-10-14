@@ -446,7 +446,12 @@ def proses_excel(file_excel, semua_sheet=False):
             read_only=True
         )
 
-        daftar_sheet = workbook.sheetnames
+        daftar_sheet = [
+            sheet.title
+            for sheet in workbook.worksheets
+            if sheet.sheet_state == "visible"
+        ]
+
         workbook.close()
 
     except Exception as e:
@@ -457,37 +462,12 @@ def proses_excel(file_excel, semua_sheet=False):
 
     if semua_sheet:
         sheet_terpilih = daftar_sheet
-        st.write("Semua sheet akan dikonversi.")
-        st.write(", ".join(daftar_sheet))
+        st.write("Seluruh sheet akan dikonversi.")
 
     else:
         sheet_terpilih = st.multiselect(
             "Pilih Sheet",
             daftar_sheet
-        )
-
-    mode = st.radio(
-        "Metode Konversi",
-        [
-            "Auto Layout",
-            "Original Layout",
-            "Fit to Width",
-            "Fit to Pages"
-        ],
-        index=0,
-        key=f"mode_excel_{semua_sheet}"
-    )
-
-    jumlah_halaman = 0
-
-    if mode == "Fit to Pages":
-        jumlah_halaman = st.number_input(
-            "Maksimal halaman vertikal",
-            min_value=1,
-            max_value=100,
-            value=2,
-            step=1,
-            key=f"halaman_excel_{semua_sheet}"
         )
 
     if st.button("Convert ke PDF"):
@@ -506,8 +486,8 @@ def proses_excel(file_excel, semua_sheet=False):
                 pdf_bytes = konversi_sheet(
                     data_excel,
                     nama_sheet,
-                    mode,
-                    jumlah_halaman
+                    "Original Layout",
+                    0
                 )
 
                 nama = bersihkan_nama(nama_sheet)
@@ -521,9 +501,7 @@ def proses_excel(file_excel, semua_sheet=False):
                 )
 
             except Exception as e:
-                gagal.append(
-                    f"{nama_sheet}: {e}"
-                )
+                gagal.append(f"{nama_sheet}: {e}")
 
             progress.progress(
                 (index + 1) / len(sheet_terpilih)
@@ -553,9 +531,7 @@ def proses_excel(file_excel, semua_sheet=False):
                 )
 
         if gagal:
-            st.error(
-                "Beberapa sheet gagal dikonversi."
-            )
+            st.error("Beberapa sheet gagal dikonversi.")
 
             for pesan in gagal:
                 st.write(pesan)
