@@ -6,7 +6,8 @@ import subprocess
 import tempfile
 import zipfile
 from pathlib import Path
-
+import json
+from openpyxl import load_workbook
 from lxml import etree
 
 
@@ -173,7 +174,7 @@ def pilih_sheet_excel(data, nama_sheet):
     return hasil_buffer.getvalue()
 
 
-def konversi_pdf(data):
+def konversi_pdf(data, nomor_sheet):
     executable = (
         shutil.which("libreoffice")
         or shutil.which("soffice")
@@ -183,6 +184,21 @@ def konversi_pdf(data):
         raise RuntimeError(
             "LibreOffice tidak tersedia di server."
         )
+
+    pengaturan = json.dumps({
+        "SheetRange": {
+            "type": "string",
+            "value": str(nomor_sheet)
+        },
+        "UseLosslessCompression": {
+            "type": "boolean",
+            "value": "true"
+        },
+        "ReduceImageResolution": {
+            "type": "boolean",
+            "value": "false"
+        }
+    })
 
     with tempfile.TemporaryDirectory() as tmp:
         folder = Path(tmp)
@@ -198,7 +214,7 @@ def konversi_pdf(data):
             f"-env:UserInstallation={profile.as_uri()}",
             "--headless",
             "--convert-to",
-            "pdf:calc_pdf_Export",
+            f"pdf:calc_pdf_Export:{pengaturan}",
             "--outdir",
             str(output_folder),
             str(input_file)
@@ -226,9 +242,12 @@ def konversi_pdf(data):
 
         if proses.returncode != 0 or not pdf_path.exists():
             raise RuntimeError(
-                "LibreOffice gagal membuat PDF: "
+                "Gagal membuat PDF: "
                 + (proses.stderr or proses.stdout)[:500]
             )
+
+        if pdf_path.stat().st_size == 0:
+            raise RuntimeError("File PDF kosong.")
 
         if pdf_path.stat().st_size > MAX_PDF:
             raise ValueError("Hasil PDF terlalu besar.")
@@ -237,5 +256,23 @@ def konversi_pdf(data):
 
 
 def konversi_satu_sheet(data, nama_sheet):
-    excel = pilih_sheet_excel(data, nama_sheet)
-    return konversi_pdf(excel)
+    validasi_excel(data)
+
+    workbook = load_workbook(
+        io.BytesIO(data),
+        read_only=True,
+        keep_links=False
+    )
+
+    try:
+        if nama_sheet not in workbook.sheetnames:
+            raise ValueError("Sheet tidak ditemukan.")
+
+        nomor_sheet = (
+            workbook.sheetnames.index(nama_sheet) + 1
+        )
+
+    finally:
+        workbook.close()
+
+    return konversi_pdf(data, nomor_sheet)
