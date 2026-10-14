@@ -28,6 +28,8 @@ from pypdf import PdfReader, PdfWriter
 
 from reportlab.pdfgen import canvas
 
+from excel_pdf import validasi_excel, konversi_satu_sheet
+
 st.set_page_config(
 
     page_title="My Tools",
@@ -441,9 +443,12 @@ def proses_excel(file_excel, semua_sheet=False):
     data_excel = file_excel.getvalue()
 
     try:
+        validasi_excel(data_excel)
+
         workbook = load_workbook(
             io.BytesIO(data_excel),
-            read_only=True
+            read_only=True,
+            keep_links=False
         )
 
         daftar_sheet = [
@@ -455,20 +460,30 @@ def proses_excel(file_excel, semua_sheet=False):
         workbook.close()
 
     except Exception as e:
-        st.error(f"Gagal membaca Excel: {e}")
+        st.error(f"Gagal membaca file: {e}")
+        return
+
+    if not daftar_sheet:
+        st.warning("Tidak ada sheet yang dapat diproses.")
         return
 
     st.write(f"Jumlah sheet: {len(daftar_sheet)}")
 
     if semua_sheet:
         sheet_terpilih = daftar_sheet
-        st.write("Seluruh sheet akan dikonversi.")
-
+        st.write("Semua sheet akan dikonversi.")
     else:
         sheet_terpilih = st.multiselect(
             "Pilih Sheet",
             daftar_sheet
         )
+
+    if len(sheet_terpilih) > 15:
+        st.warning(
+            "Maksimal 15 sheet per proses. "
+            "Pilih lebih sedikit sheet."
+        )
+        return
 
     if st.button("Convert ke PDF"):
         if not sheet_terpilih:
@@ -483,11 +498,9 @@ def proses_excel(file_excel, semua_sheet=False):
 
         for index, nama_sheet in enumerate(sheet_terpilih):
             try:
-                pdf_bytes = konversi_sheet(
+                pdf_bytes = konversi_satu_sheet(
                     data_excel,
-                    nama_sheet,
-                    "Original Layout",
-                    0
+                    nama_sheet
                 )
 
                 nama = bersihkan_nama(nama_sheet)
