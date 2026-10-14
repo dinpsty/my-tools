@@ -471,7 +471,12 @@ def proses_excel(file_excel, semua_sheet=False):
             daftar_sheet
 
         )
-
+    mode = st.radio (
+        "Metode Konversi",
+        ["Original Layout", "Fit to Width"],
+        horizontal=True,
+        key=f"mode_excel_{semua_sheet}"
+    )
     if st.button("Convert ke PDF"):
 
         if not sheet_terpilih:
