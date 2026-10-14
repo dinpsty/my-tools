@@ -20,6 +20,8 @@ from docx import Document
 
 from openpyxl import Workbook, load_workbook
 
+from lxml import etree
+
 from pypdf import PdfReader, PdfWriter
 
 from reportlab.pdfgen import canvas
@@ -220,29 +222,81 @@ def konversi_ke_pdf(data, ekstensi):
 
         return path_pdf.read_bytes()
 
-def konversi_sheet(data_excel, nama_sheet):
-    workbook = load_workbook(
-        io.BytesIO(data_excel)
-    )
+def siapkan_excel_sheet(data_excel, nama_sheet):
+    input_buffer = io.BytesIO(data_excel)
+    output_buffer = io.BytesIO()
 
-    try:
-        if nama_sheet not in workbook.sheetnames:
-            raise ValueError("Sheet tidak ditemukan.")
+    namespace = {
+        "main": (
+            "http://schemas.openxmlformats.org/"
+            "spreadsheetml/2006/main"
+        )
+    }
 
-        for sheet in workbook.worksheets:
-            sheet.sheet_state = (
-                "visible" if sheet.title == nama_sheet
-                else "hidden"
+    with zipfile.ZipFile(input_buffer, "r") as zip_input:
+        with zipfile.ZipFile(
+            output_buffer, "w"
+        ) as zip_output:
+
+            if "xl/workbook.xml" not in zip_input.namelist():
+                raise ValueError("Struktur file Excel tidak valid.")
+
+            xml_workbook = zip_input.read(
+                "xl/workbook.xml"
             )
 
-        excel_buffer = io.BytesIO()
-        workbook.save(excel_buffer)
+            root = etree.fromstring(xml_workbook)
 
-    finally:
-        workbook.close()
+            daftar_sheet = root.xpath(
+                ".//main:sheets/main:sheet",
+                namespaces=namespace
+            )
+
+            nama_ditemukan = False
+
+            for sheet in daftar_sheet:
+                nama = sheet.get("name")
+
+                if nama == nama_sheet:
+                    sheet.set("state", "visible")
+                    nama_ditemukan = True
+                else:
+                    sheet.set("state", "hidden")
+
+            if not nama_ditemukan:
+                raise ValueError(
+                    f"Sheet '{nama_sheet}' tidak ditemukan."
+                )
+
+            xml_baru = etree.tostring(
+                root,
+                encoding="UTF-8",
+                xml_declaration=True
+            )
+
+            for info in zip_input.infolist():
+                if info.filename == "xl/workbook.xml":
+                    zip_output.writestr(
+                        info,
+                        xml_baru
+                    )
+                else:
+                    zip_output.writestr(
+                        info,
+                        zip_input.read(info.filename)
+                    )
+
+    return output_buffer.getvalue()
+
+
+def konversi_sheet(data_excel, nama_sheet):
+    excel_bytes = siapkan_excel_sheet(
+        data_excel,
+        nama_sheet
+    )
 
     return konversi_ke_pdf(
-        excel_buffer.getvalue(),
+        excel_bytes,
         ".xlsx"
     )
 
