@@ -3,3 +3,5 @@ libreoffice-writer
 fonts-liberation
 fonts-crosextra-carlito
 fonts-crosextra-caladea
+fonts-dejavu-core
+fonts-noto-core
