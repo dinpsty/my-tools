@@ -221,31 +221,29 @@ def konversi_ke_pdf(data, ekstensi):
         return path_pdf.read_bytes()
 
 def konversi_sheet(data_excel, nama_sheet):
-
-    workbook = load_workbook(io.BytesIO(data_excel))
+    workbook = load_workbook(
+        io.BytesIO(data_excel)
+    )
 
     try:
+        if nama_sheet not in workbook.sheetnames:
+            raise ValueError("Sheet tidak ditemukan.")
 
-        for sheet in list(workbook.sheetnames):
-
-            if sheet != nama_sheet:
-
-                del workbook[sheet]
+        for sheet in workbook.worksheets:
+            sheet.sheet_state = (
+                "visible" if sheet.title == nama_sheet
+                else "hidden"
+            )
 
         excel_buffer = io.BytesIO()
-
         workbook.save(excel_buffer)
 
     finally:
-
         workbook.close()
 
     return konversi_ke_pdf(
-
         excel_buffer.getvalue(),
-
         ".xlsx"
-
     )
 
 def pdf_satu_halaman(pdf_bytes, nomor_halaman):
