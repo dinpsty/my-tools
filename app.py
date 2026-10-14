@@ -314,7 +314,11 @@ def siapkan_excel_sheet(data_excel, nama_sheet, mode):
 
                 elif (
                     info.filename == target_sheet
-                    and mode == "Fit to Width"
+                    and mode in [
+                        "Auto Layout",
+                        "Fit to Width",
+                        "Fit to Pages",
+                    ]
                 ):
                     root = etree.fromstring(data)
 
@@ -471,11 +475,27 @@ def proses_excel(file_excel, semua_sheet=False):
             daftar_sheet
 
         )
-    mode = st.radio (
-        "Metode Konversi",
-        ["Original Layout", "Fit to Width"],
-        horizontal=True,
-        key=f"mode_excel_{semua_sheet}"
+    mode = st.radio(
+    "Metode Konversi",
+    [
+        "Auto Layout",
+        "Original Layout",
+        "Fit to Width",
+        "Fit to Pages"
+    ],
+    index=0,
+    key=f"mode_excel_{semua_sheet}"
+)
+
+jumlah_halaman = 0
+
+if mode == "Fit to Pages":
+    jumlah_halaman = st.number_input(
+        "Maksimal halaman vertikal",
+        min_value=1,
+        max_value=100,
+        value=2,
+        step=1
     )
     if st.button("Convert ke PDF"):
 
