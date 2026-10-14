@@ -173,6 +173,44 @@ def pilih_sheet_excel(data, nama_sheet):
 
     return hasil_buffer.getvalue()
 
+def baca_pengaturan_cetak(data, nama_sheet):
+    from openpyxl import load_workbook
+
+    workbook = load_workbook(
+        io.BytesIO(data),
+        read_only=False,
+        keep_links=False
+    )
+
+    try:
+        if nama_sheet not in workbook.sheetnames:
+            raise ValueError("Sheet tidak ditemukan.")
+
+        sheet = workbook[nama_sheet]
+        setup = sheet.page_setup
+        margins = sheet.page_margins
+        properties = sheet.sheet_properties.pageSetUpPr
+
+        return {
+            "paper_size": setup.paperSize or None,
+            "orientation": setup.orientation or None,
+            "scale": setup.scale,
+            "fit_to_width": setup.fitToWidth,
+            "fit_to_height": setup.fitToHeight,
+            "fit_to_page": (
+                properties.fitToPage
+                if properties is not None
+                else None
+            ),
+            "print_area": str(sheet.print_area or ""),
+            "margin_left": margins.left,
+            "margin_right": margins.right,
+            "margin_top": margins.top,
+            "margin_bottom": margins.bottom
+        }
+
+    finally:
+        workbook.close()
 
 def konversi_pdf(data, nomor_sheet):
     executable = (
@@ -275,4 +313,12 @@ def konversi_satu_sheet(data, nama_sheet):
     finally:
         workbook.close()
 
-    return konversi_pdf(data, nomor_sheet)
+    pengaturan = baca_pengaturan_cetak(
+        data,
+        nama_sheet
+    )
+
+    return konversi_pdf(
+        data,
+        nomor_sheet
+    )
