@@ -224,7 +224,7 @@ def konversi_ke_pdf(data, ekstensi):
 
         return path_pdf.read_bytes()
 
-def siapkan_excel_sheet(data_excel, nama_sheet, mode):
+def siapkan_excel_sheet(data_excel, nama_sheet, mode, jumlah_halaman=0):
     ns_main = (
         "http://schemas.openxmlformats.org/"
         "spreadsheetml/2006/main"
@@ -384,7 +384,11 @@ def siapkan_excel_sheet(data_excel, nama_sheet, mode):
                         root.insert(posisi, page_setup)
 
                     page_setup.set("fitToWidth", "1")
-                    page_setup.set("fitToHeight", "0")
+
+                    if mode == "Fit to Pages":
+                        page_setup.set("fitToHeight", str(jumlah_halaman))
+                    else:
+                        page_setup.set("fitToHeight", "0")
 
                     if "scale" in page_setup.attrib:
                         del page_setup.attrib["scale"]
@@ -400,11 +404,12 @@ def siapkan_excel_sheet(data_excel, nama_sheet, mode):
     return output_buffer.getvalue()
 
 
-def konversi_sheet(data_excel, nama_sheet, mode):
+def konversi_sheet(data_excel, nama_sheet, mode, jumlah_halaman=0):
     data_sheet = siapkan_excel_sheet(
         data_excel,
         nama_sheet,
-        mode
+        mode,
+        jumlah_halaman
     )
 
     return konversi_ke_pdf(
@@ -433,162 +438,126 @@ def konversi_word_cached(data):
     return konversi_ke_pdf(data, ".docx")
 
 def proses_excel(file_excel, semua_sheet=False):
-
     data_excel = file_excel.getvalue()
 
     try:
-
         workbook = load_workbook(
-
             io.BytesIO(data_excel),
-
             read_only=True
-
         )
 
         daftar_sheet = workbook.sheetnames
-
         workbook.close()
 
     except Exception as e:
-
         st.error(f"Gagal membaca Excel: {e}")
-
         return
 
     st.write(f"Jumlah sheet: {len(daftar_sheet)}")
 
     if semua_sheet:
-
         sheet_terpilih = daftar_sheet
-
         st.write("Semua sheet akan dikonversi.")
-
         st.write(", ".join(daftar_sheet))
 
     else:
-
         sheet_terpilih = st.multiselect(
-
             "Pilih Sheet",
-
             daftar_sheet
-
         )
+
     mode = st.radio(
-    "Metode Konversi",
-    [
-        "Auto Layout",
-        "Original Layout",
-        "Fit to Width",
-        "Fit to Pages"
-    ],
-    index=0,
-    key=f"mode_excel_{semua_sheet}"
-)
-
-jumlah_halaman = 0
-
-if mode == "Fit to Pages":
-    jumlah_halaman = st.number_input(
-        "Maksimal halaman vertikal",
-        min_value=1,
-        max_value=100,
-        value=2,
-        step=1
+        "Metode Konversi",
+        [
+            "Auto Layout",
+            "Original Layout",
+            "Fit to Width",
+            "Fit to Pages"
+        ],
+        index=0,
+        key=f"mode_excel_{semua_sheet}"
     )
+
+    jumlah_halaman = 0
+
+    if mode == "Fit to Pages":
+        jumlah_halaman = st.number_input(
+            "Maksimal halaman vertikal",
+            min_value=1,
+            max_value=100,
+            value=2,
+            step=1,
+            key=f"halaman_excel_{semua_sheet}"
+        )
+
     if st.button("Convert ke PDF"):
-
         if not sheet_terpilih:
-
             st.warning("Pilih minimal satu sheet.")
-
             return
 
         hasil_file = []
-
         gagal = []
-
         digunakan = set()
 
         progress = st.progress(0)
 
         for index, nama_sheet in enumerate(sheet_terpilih):
-
             try:
-
                 pdf_bytes = konversi_sheet(
-
-                    data_excel, 
-                    nama_sheet,\
-                    mode
-
+                    data_excel,
+                    nama_sheet,
+                    mode,
+                    jumlah_halaman
                 )
 
                 nama = bersihkan_nama(nama_sheet)
-
-                nama = nama_unik(nama or "Sheet", digunakan)
+                nama = nama_unik(
+                    nama or "Sheet",
+                    digunakan
+                )
 
                 hasil_file.append(
-
                     (f"{nama}.pdf", pdf_bytes)
-
                 )
 
             except Exception as e:
-
-                gagal.append(f"{nama_sheet}: {e}")
+                gagal.append(
+                    f"{nama_sheet}: {e}"
+                )
 
             progress.progress(
-
                 (index + 1) / len(sheet_terpilih)
-
             )
 
         if hasil_file:
-
             st.success(
-
                 f"{len(hasil_file)} sheet berhasil dikonversi."
-
             )
 
             if len(hasil_file) == 1:
-
                 nama, data = hasil_file[0]
 
                 st.download_button(
-
                     "⬇️ Download PDF",
-
                     data=data,
-
                     file_name=nama,
-
                     mime="application/pdf"
-
                 )
 
             else:
-
                 st.download_button(
-
                     "⬇️ Download ZIP",
-
                     data=buat_zip(hasil_file),
-
                     file_name="excel_sheet_pdf.zip",
-
                     mime="application/zip"
-
                 )
 
         if gagal:
-
-            st.error("Beberapa sheet gagal dikonversi.")
+            st.error(
+                "Beberapa sheet gagal dikonversi."
+            )
 
             for pesan in gagal:
-
                 st.write(pesan)
 
 def proses_word(file_word, semua_halaman=False):
