@@ -48,6 +48,8 @@ pilihan = st.selectbox(
 
     [
 
+        "Folder Maker",
+
         "PDF Blank",
 
         "DOC Blank",
@@ -665,7 +667,58 @@ def proses_word(file_word, semua_halaman=False):
 
             )
 
-if pilihan in [
+if pilihan == "Folder Maker":
+
+    st.subheader("📁 Folder Maker")
+
+    st.write("Masukkan nama folder satu per baris.")
+
+    input_nama_folder = st.text_area(
+        "Nama Folder",
+        height=250,
+        placeholder="Contoh:\nAndi\nBudi\nCitra",
+        key="nama_folder"
+    )
+
+    if st.button("Buat Folder"):
+
+        nama_folder = []
+        nama_sudah_ada = set()
+
+        for nama in input_nama_folder.splitlines():
+            nama = bersihkan_nama(nama.strip())
+
+            if not nama or nama in (".", ".."):
+                continue
+
+            if nama.lower() in nama_sudah_ada:
+                continue
+
+            nama_sudah_ada.add(nama.lower())
+            nama_folder.append(nama)
+
+        if not nama_folder:
+            st.error("Masukkan minimal satu nama folder.")
+        else:
+            zip_buffer = io.BytesIO()
+
+            with zipfile.ZipFile(
+                zip_buffer, "w", zipfile.ZIP_DEFLATED
+            ) as zip_file:
+                for nama in nama_folder:
+                    zip_file.writestr(f"{nama}/", "")
+
+            st.success(f"{len(nama_folder)} folder berhasil dibuat.")
+
+            st.download_button(
+                label="⬇️ Download Folder",
+                data=zip_buffer.getvalue(),
+                file_name="folder_hasil.zip",
+                mime="application/zip"
+            )
+
+
+elif pilihan in [
 
     "PDF Blank",
 
